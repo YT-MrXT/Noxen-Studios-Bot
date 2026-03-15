@@ -43,6 +43,9 @@ const client = new Client({
 // Histórico de conversas por usuário
 const conversations = new Map();
 
+// Conjunto para evitar duplicações
+const processing = new Set();
+
 // Servidor Express para Render
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -57,79 +60,82 @@ client.once(Events.ClientReady, () => {
 // Mensagens
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot) return;
-
     const userId = message.author.id;
-    const msg = message.content.toLowerCase();
 
-    if (!conversations.has(userId)) conversations.set(userId, []);
-    const history = conversations.get(userId);
+    // Evita processar duplicado
+    if (processing.has(userId)) return;
+    processing.add(userId);
 
-    // Comandos
-    if (msg === "/newchat") {
-        conversations.set(userId, []);
-        return message.reply("🧹 Chat reiniciado.");
-    }
-
-    if (msg === "/site") {
-        return message.reply("🌐 https://noxenstd.wixsite.com/noxen-studios");
-    }
-
-    if (msg === "/contact") {
-        return message.reply("📧 noxenstds@gmail.com");
-    }
-
-    if (msg === "/ticket") {
-        const button = new ButtonBuilder()
-            .setCustomId("open_ticket")
-            .setLabel("🎫 Abrir Ticket")
-            .setStyle(ButtonStyle.Primary);
-
-        const row = new ActionRowBuilder().addComponents(button);
-
-        return message.reply({
-            content: "🎫 Suporte Noxen Studios\nClique no botão para abrir ticket.",
-            components: [row]
-        });
-    }
-
-    // Adiciona mensagem do usuário
-    history.push({ role: "user", content: message.content });
-
-    // Limita histórico a 10 mensagens
-    while (history.length > 10) history.shift();
-
-    // Verifica chave OpenAI
-    if (!process.env.OPENAI_API_KEY) {
-        console.error("❌ OPENAI_API_KEY não definida!");
-        return message.reply("❌ Erro: chave OpenAI não definida.");
-    }
-
-    // Gera resposta com OpenAI
     try {
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-                {
-                    role: "system",
-                    content: `
+        const msg = message.content.toLowerCase();
+
+        if (!conversations.has(userId)) conversations.set(userId, []);
+        const history = conversations.get(userId);
+
+        // Comandos
+        if (msg === "/newchat") {
+            conversations.set(userId, []);
+            return message.reply("🧹 Chat reiniciado.");
+        }
+
+        if (msg === "/site") {
+            return message.reply("🌐 https://noxenstd.wixsite.com/noxen-studios");
+        }
+
+        if (msg === "/contact") {
+            return message.reply("📧 noxenstds@gmail.com");
+        }
+
+        if (msg === "/ticket") {
+            const button = new ButtonBuilder()
+                .setCustomId("open_ticket")
+                .setLabel("🎫 Abrir Ticket")
+                .setStyle(ButtonStyle.Primary);
+
+            const row = new ActionRowBuilder().addComponents(button);
+
+            return message.reply({
+                content: "🎫 Suporte Noxen Studios\nClique no botão para abrir ticket.",
+                components: [row]
+            });
+        }
+
+        // Adiciona mensagem do usuário
+        history.push({ role: "user", content: message.content });
+
+        // Limita histórico a 10 mensagens
+        while (history.length > 10) history.shift();
+
+        // Gera resposta com OpenAI
+        try {
+            const completion = await openai.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [
+                    {
+                        role: "system",
+                        content: `
 Você é o assistente oficial da Noxen Studios.
 Empresa que desenvolve jogos Roblox.
 Site: https://noxenstd.wixsite.com/noxen-studios
 Email: noxenstds@gmail.com
 Responda em qualquer idioma automaticamente.
-                    `
-                },
-                ...history
-            ]
-        });
+                        `
+                    },
+                    ...history
+                ]
+            });
 
-        const reply = completion.choices[0].message.content;
-        history.push({ role: "assistant", content: reply });
-        message.reply(reply);
+            const reply = completion.choices[0].message.content;
+            history.push({ role: "assistant", content: reply });
+            await message.reply(reply);
 
-    } catch (err) {
-        console.error("❌ Erro OpenAI:", err);
-        message.reply("❌ Erro ao gerar resposta. Confira a chave API ou tente novamente mais tarde.");
+        } catch (err) {
+            console.error("❌ Erro OpenAI:", err);
+            await message.reply("❌ Erro ao gerar resposta. Confira a chave API ou tente novamente mais tarde.");
+        }
+
+    } finally {
+        processing.delete(userId); // libera para próxima mensagem
     }
 });
 
