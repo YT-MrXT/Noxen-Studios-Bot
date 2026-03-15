@@ -19,6 +19,7 @@ const {
 } = require("discord.js");
 
 const OpenAI = require("openai");
+const franc = require("franc"); // Detect language
 const express = require("express");
 
 // ---------- Config ----------
@@ -52,8 +53,9 @@ const client = new Client({
 });
 
 // ---------- Storage ----------
-const conversations = new Map();
+const conversations = new Map(); // userId => [{role, content}]
 const userTickets = new Map();
+const lastReplies = new Map(); // userId => last reply content
 
 // ---------- Express ----------
 const app = express();
@@ -89,9 +91,7 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
 })();
 
 // ---------- Ready ----------
-client.once(Events.ClientReady, () => {
-    console.log(`Bot online: ${client.user.tag}`);
-});
+client.once(Events.ClientReady, () => console.log(`Bot online: ${client.user.tag}`));
 
 // ---------- Interactions ----------
 client.on(Events.InteractionCreate, async interaction => {
@@ -105,6 +105,7 @@ client.on(Events.InteractionCreate, async interaction => {
         switch (interaction.commandName) {
             case "newchat":
                 conversations.set(userId, []);
+                lastReplies.delete(userId);
                 return interaction.reply("🧹 Chat reset.");
 
             case "site":
@@ -126,7 +127,6 @@ client.on(Events.InteractionCreate, async interaction => {
                 });
 
             case "ia":
-                // Envia menu de opções
                 const menu = new StringSelectMenuBuilder()
                     .setCustomId("ia_options")
                     .setPlaceholder("Select an option")
@@ -135,7 +135,6 @@ client.on(Events.InteractionCreate, async interaction => {
                         new StringSelectMenuOptionBuilder().setLabel("New Chat").setValue("new"),
                         new StringSelectMenuOptionBuilder().setLabel("Reset Chat").setValue("reset")
                     );
-
                 const menuRow = new ActionRowBuilder().addComponents(menu);
                 return interaction.reply({ content: "💬 Noxen AI Options", components: [menuRow], ephemeral: true });
         }
@@ -151,9 +150,10 @@ client.on(Events.InteractionCreate, async interaction => {
             case "new":
             case "reset":
                 conversations.set(userId, []);
+                lastReplies.delete(userId);
                 return interaction.update({ content: "🧹 Chat reset.", components: [] });
             case "continue":
-                return interaction.update({ content: "💬 Continue your chat by sending a DM to the bot or using /ia again.", components: [] });
+                return interaction.update({ content: "💬 Continue your chat by sending a DM or using /ia again.", components: [] });
         }
     }
 
@@ -182,7 +182,6 @@ client.on(Events.InteractionCreate, async interaction => {
 
                 userTickets.set(userId, channel);
 
-                // Buttons inside ticket
                 const closeButton = new ButtonBuilder()
                     .setCustomId("close_ticket")
                     .setLabel("Close Ticket")
@@ -243,8 +242,8 @@ client.on(Events.InteractionCreate, async interaction => {
         if (interaction.customId === "add_user_modal") {
             const userInput = interaction.fields.getTextInputValue("user_to_add");
 
-            let userToAdd;
             try {
+                let userToAdd;
                 if (userInput.match(/^<@!?(\d+)>$/)) {
                     const id = userInput.match(/^<@!?(\d+)>$/)[1];
                     userToAdd = await interaction.guild.members.fetch(id);
@@ -255,7 +254,6 @@ client.on(Events.InteractionCreate, async interaction => {
                 if (!userToAdd) return interaction.reply({ content: "❌ User not found.", ephemeral: true });
 
                 await interaction.channel.permissionOverwrites.edit(userToAdd.id, { ViewChannel: true });
-
                 return interaction.reply({ content: `✅ ${userToAdd.user.tag} added to the ticket.`, ephemeral: true });
 
             } catch (err) {
@@ -275,6 +273,9 @@ client.on(Events.MessageCreate, async message => {
     if (!conversations.has(userId)) conversations.set(userId, []);
     const history = conversations.get(userId);
 
+    // Detect language
+    const lang = franc(message.content) || "eng";
+
     history.push({ role: "user", content: message.content });
     while (history.length > 10) history.shift();
 
@@ -284,13 +285,20 @@ client.on(Events.MessageCreate, async message => {
         const completion = await openai.chat.completions.create({
             model: "gpt-3.5-turbo",
             messages: [
-                { role: "system", content: "You are the official Noxen Studios assistant. Reply in any language automatically." },
+                { role: "system", content: `You are the official Noxen Studios assistant. Detect user language and reply in same language (${lang}).` },
                 ...history
             ]
         });
+
         const reply = completion.choices[0].message.content;
-        history.push({ role: "assistant", content: reply });
+
+        // Prevent duplicates
+        if (lastReplies.get(userId) === reply) return;
+        lastReplies.set(userId, reply);
+
         await message.reply(reply);
+        history.push({ role: "assistant", content: reply });
+
     } catch (err) {
         console.error("⚠️ OpenAI failed:", err);
         await message.reply("⚠️ Failed to generate AI response. Check your API key or try later.");
