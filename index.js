@@ -1,4 +1,5 @@
-// index.js - Noxen Studios Bot Ultra
+// index.js - Noxen Studios Bot Ultra (seguro, usando .env)
+require('dotenv').config(); // carregando variáveis do .env
 const { 
   Client, GatewayIntentBits, Partials, Events,
   ChannelType, PermissionsBitField,
@@ -10,10 +11,9 @@ const OpenAI = require("openai");
 const express = require("express");
 
 // ---------- Config ----------
-// Coloque suas keys diretamente aqui
-const DISCORD_TOKEN = "SUA_DISCORD_TOKEN_AQUI";   // ← sua Discord Bot Token
-const OPENAI_API_KEY = "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"; // ← sua OpenAI API Key
-const CLIENT_ID = "SEU_CLIENT_ID_AQUI";          // ← seu Client ID
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;     // sua Discord Bot Token
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;   // sua OpenAI API Key
+const CLIENT_ID = process.env.CLIENT_ID;            // Client ID do bot
 
 if (!DISCORD_TOKEN || !OPENAI_API_KEY || !CLIENT_ID) {
   console.error("❌ DISCORD_TOKEN, OPENAI_API_KEY ou CLIENT_ID não definido!");
@@ -40,10 +40,10 @@ app.get("/", (req,res) => res.send("🤖 Noxen Studios Bot Online!"));
 app.listen(process.env.PORT || 3000, () => console.log("Servidor web ativo..."));
 
 // ---------- Storage ----------
-const conversations = new Map();  // histórico de chats
-const lastReplies = new Map();    // evita mensagens duplicadas
-const respondedMessages = new Set();  // evita duplicar respostas
-const userTickets = new Map();    // rastreia tickets abertos
+const conversations = new Map();
+const lastReplies = new Map();
+const respondedMessages = new Set();
+const userTickets = new Map();
 
 // ---------- Slash Commands ----------
 const commands = [
@@ -77,7 +77,9 @@ async function getAIResponse(userId, message) {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // modelo potente
+      model: "gpt-4o-mini",       // modelo potente
+      temperature: 0.7,           // criatividade
+      max_tokens: 500,            // tamanho máximo da resposta
       messages: [
         {
           role: "system",
