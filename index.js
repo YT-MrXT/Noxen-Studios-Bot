@@ -1,5 +1,6 @@
-// index.js - Noxen Studios Bot Ultra (robusto, seguro e pronto para .env)
-require('dotenv').config(); // Carrega variáveis do .env
+// index.js - Noxen Studios Bot Ultra (Google Gemini)
+
+require('dotenv').config();
 
 const { 
   Client, GatewayIntentBits, Partials, Events,
@@ -8,18 +9,18 @@ const {
   StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
   SlashCommandBuilder, REST, Routes
 } = require("discord.js");
-const OpenAI = require("openai");
+
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 const express = require("express");
 
 // ---------- Config ----------
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const CLIENT_ID = process.env.CLIENT_ID;
-const PORT = process.env.PORT || 3000;
 
-// ---------- Verificação das keys ----------
+// ---------- Verificação ----------
 if (!DISCORD_TOKEN || !CLIENT_ID) {
-  console.error("❌ DISCORD_TOKEN ou CLIENT_ID não definido! Corrija seu .env");
+  console.error("❌ DISCORD_TOKEN ou CLIENT_ID não definido!");
   process.exit(1);
 }
 
@@ -36,19 +37,21 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-// ---------- OpenAI ----------
-let openai = null;
-if (OPENAI_API_KEY) {
-  openai = new OpenAI({ apiKey: OPENAI_API_KEY });
-  console.log("🔹 OpenAI key carregada!");
+// ---------- Gemini ----------
+let model = null;
+
+if (GEMINI_API_KEY) {
+  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+  model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  console.log("🔹 Gemini API carregada!");
 } else {
-  console.warn("⚠️ OPENAI_API_KEY não definida. Função de IA desativada até configurar a key.");
+  console.warn("⚠️ GEMINI_API_KEY não definida. IA desativada.");
 }
 
 // ---------- Express ----------
 const app = express();
-app.get("/", (req,res) => res.send("🤖 Noxen Studios Bot Online!"));
-app.listen(PORT, () => console.log(`Servidor web ativo na porta ${PORT}...`));
+app.get("/", (req,res)=>res.send("🤖 Noxen Studios Bot Online"));
+app.listen(3000, ()=>console.log("Servidor web ativo..."));
 
 // ---------- Storage ----------
 const conversations = new Map();
@@ -65,6 +68,7 @@ const commands = [
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
+
 (async () => {
   try {
     console.log("🔹 Registrando comandos globais...");
@@ -80,51 +84,61 @@ client.once(Events.ClientReady, () => {
   console.log(`Bot online: ${client.user.tag}`);
 });
 
-// ---------- Função de IA ----------
+// ---------- Função IA ----------
 async function getAIResponse(userId, message) {
-  if (!openai) return null; // não tenta responder se a key não existe
+
+  if (!model) return "⚠️ AI is currently disabled.";
 
   if (!conversations.has(userId)) conversations.set(userId, []);
   const history = conversations.get(userId);
 
-  history.push({ role: "user", content: message });
-  if (history.length > 10) history.shift();
+  history.push(`User: ${message}`);
+
+  const prompt = `
+You are the official assistant of Noxen Studios.
+Noxen Studios develops Roblox games.
+
+Website:
+https://noxenstd.wixsite.com/noxen-studios
+
+Always respond politely and professionally.
+Respond in the same language as the user.
+
+Conversation:
+${history.join("\n")}
+`;
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.7,
-      max_tokens: 500,
-      messages: [
-        {
-          role: "system",
-          content: `You are the official assistant of Noxen Studios.
-Noxen Studios develops creative Roblox games.
-Always respond politely and professionally, in the user's language.`
-        },
-        ...history
-      ]
-    });
 
-    const reply = completion.choices[0].message.content.trim();
+    const result = await model.generateContent(prompt);
+    const reply = result.response.text().trim();
+
     if (lastReplies.get(userId) === reply) return null;
+
     lastReplies.set(userId, reply);
-    history.push({ role: "assistant", content: reply });
+    history.push(`AI: ${reply}`);
+
+    if (history.length > 20) history.shift();
+
     return reply;
 
   } catch (err) {
-    console.error("❌ OpenAI error:", err);
-    return "⚠️ Não foi possível gerar resposta. A IA está desativada ou a key é inválida.";
+    console.error("❌ Gemini error:", err);
+    return "⚠️ AI error occurred.";
   }
 }
 
 // ---------- Interactions ----------
 client.on(Events.InteractionCreate, async interaction => {
+
   const userId = interaction.user.id;
 
   if (interaction.isChatInputCommand()) {
+
     switch (interaction.commandName) {
+
       case "ia":
+
         const menu = new StringSelectMenuBuilder()
           .setCustomId("ia_options")
           .setPlaceholder("Select an option")
@@ -133,78 +147,134 @@ client.on(Events.InteractionCreate, async interaction => {
             new StringSelectMenuOptionBuilder().setLabel("New Chat").setValue("new"),
             new StringSelectMenuOptionBuilder().setLabel("Reset Chat").setValue("reset")
           );
-        return interaction.reply({ content: "💬 Noxen AI Options", components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+
+        return interaction.reply({
+          content:"💬 Noxen AI Options",
+          components:[new ActionRowBuilder().addComponents(menu)],
+          ephemeral:true
+        });
 
       case "ticket_panel":
+
         const button = new ButtonBuilder()
           .setCustomId("open_ticket")
           .setLabel("🎫 Open Ticket")
           .setStyle(ButtonStyle.Primary);
-        return interaction.reply({ content: "🎫 Noxen Studios Support Panel\nClick the button to open a ticket.", components: [new ActionRowBuilder().addComponents(button)], ephemeral: false });
+
+        return interaction.reply({
+          content:"🎫 Noxen Studios Support Panel\nClick the button to open a ticket.",
+          components:[new ActionRowBuilder().addComponents(button)]
+        });
 
       case "site":
         return interaction.reply("🌐 https://noxenstd.wixsite.com/noxen-studios");
 
       case "contact":
-        return interaction.reply({ content: "📧 noxenstds@gmail.com", ephemeral: true });
+        return interaction.reply({
+          content:"📧 noxenstds@gmail.com",
+          ephemeral:true
+        });
+
     }
+
   }
 
+  // ---------- Menu IA ----------
   if (interaction.isStringSelectMenu() && interaction.customId === "ia_options") {
+
     switch (interaction.values[0]) {
+
       case "new":
       case "reset":
         conversations.set(userId, []);
         lastReplies.delete(userId);
-        return interaction.update({ content: "🧹 Chat reset.", components: [] });
+        return interaction.update({
+          content:"🧹 Chat reset.",
+          components:[]
+        });
+
       case "continue":
-        return interaction.update({ content: "💬 Continue your chat by sending a DM.", components: [] });
+        return interaction.update({
+          content:"💬 Continue your chat by sending a DM.",
+          components:[]
+        });
+
     }
+
   }
 
+  // ---------- Tickets ----------
   if (interaction.isButton()) {
-    if (interaction.customId === "open_ticket") {
-      if (userTickets.has(userId)) return interaction.reply({ content: `You already have an open ticket: ${userTickets.get(userId)}`, ephemeral: true });
 
-      const safeName = interaction.user.username.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
+    if (interaction.customId === "open_ticket") {
+
+      if (userTickets.has(userId))
+        return interaction.reply({
+          content:"You already have an open ticket.",
+          ephemeral:true
+        });
+
+      const safeName = interaction.user.username.replace(/[^a-zA-Z0-9]/g,"-").toLowerCase();
+
       const channel = await interaction.guild.channels.create({
-        name: `ticket-${safeName}`,
-        type: ChannelType.GuildText,
-        permissionOverwrites: [
-          { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-          { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] }
+        name:`ticket-${safeName}`,
+        type:ChannelType.GuildText,
+        permissionOverwrites:[
+          {id:interaction.guild.id,deny:[PermissionsBitField.Flags.ViewChannel]},
+          {id:interaction.user.id,allow:[PermissionsBitField.Flags.ViewChannel]}
         ]
       });
 
-      userTickets.set(userId, channel);
+      userTickets.set(userId,channel);
+
       const row = new ActionRowBuilder()
         .addComponents(
-          new ButtonBuilder().setCustomId("close_ticket").setLabel("Close Ticket").setStyle(ButtonStyle.Danger),
-          new ButtonBuilder().setCustomId("add_user").setLabel("Add User").setStyle(ButtonStyle.Secondary)
+          new ButtonBuilder().setCustomId("close_ticket").setLabel("Close Ticket").setStyle(ButtonStyle.Danger)
         );
 
-      await channel.send({ content: `🎫 Ticket opened by ${interaction.user}`, components: [row] });
-      return interaction.reply({ content: `✅ Your ticket has been created: ${channel}`, ephemeral: true });
+      await channel.send({
+        content:`🎫 Ticket opened by ${interaction.user}`,
+        components:[row]
+      });
+
+      return interaction.reply({
+        content:`✅ Your ticket has been created: ${channel}`,
+        ephemeral:true
+      });
+
     }
 
     if (interaction.customId === "close_ticket") {
+
       if (interaction.channel.type === ChannelType.GuildText) {
+
         await interaction.channel.delete();
-        userTickets.forEach((ch, uid) => { if (ch.id === interaction.channel.id) userTickets.delete(uid); });
+
+        userTickets.forEach((ch,uid)=>{
+          if(ch.id===interaction.channel.id) userTickets.delete(uid);
+        });
+
       }
+
     }
+
   }
+
 });
 
-// ---------- DMs ----------
+// ---------- DMs IA ----------
 client.on(Events.MessageCreate, async message => {
+
   if (message.author.bot) return;
   if (message.guild) return;
+
   if (respondedMessages.has(message.id)) return;
   respondedMessages.add(message.id);
 
   const reply = await getAIResponse(message.author.id, message.content);
+
   if (reply) await message.channel.send(reply);
+
 });
 
 // ---------- Login ----------
