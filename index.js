@@ -26,7 +26,7 @@ const express = require("express");
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const HF_API_KEY = process.env.HF_API_KEY;
-const HF_MODEL = "bigscience/bloomz"; // modelo Hugging Face
+const HF_MODEL = "bigscience/bloomz";
 
 if (!DISCORD_TOKEN || !CLIENT_ID || !HF_API_KEY) {
     console.error("❌ DISCORD_TOKEN, CLIENT_ID ou HF_API_KEY não definido!");
@@ -91,13 +91,24 @@ async function getHFResponse(userId, message, lang="eng") {
             body: JSON.stringify({ inputs: message })
         });
         const data = await res.json();
-        let reply = data?.generated_text || "⚠️ Failed to generate AI response.";
+
+        // ✅ Corrige diferentes formatos de retorno
+        let reply = null;
+        if (Array.isArray(data)) {
+            reply = data[0]?.generated_text || data[0]?.body || null;
+        } else {
+            reply = data?.generated_text || data?.body || null;
+        }
+
+        if (!reply) return "⚠️ AI could not generate a response, please try again.";
+
         if (lastReplies.get(userId) === reply) return null;
         lastReplies.set(userId, reply);
-        history.push({ role: "assistant", content: reply });
+
+        history.push({ role:"assistant", content: reply });
         conversations.set(userId, history);
         return reply;
-    } catch (err) {
+    } catch(err){
         console.error("❌ Hugging Face error:", err);
         return "⚠️ Failed to generate AI response.";
     }
