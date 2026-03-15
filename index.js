@@ -11,13 +11,12 @@ const {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    REST,
-    Routes,
-    SlashCommandBuilder,
     StringSelectMenuBuilder,
-    StringSelectMenuOptionBuilder
+    StringSelectMenuOptionBuilder,
+    SlashCommandBuilder,
+    REST,
+    Routes
 } = require("discord.js");
-
 const fetch = require("node-fetch");
 const franc = require("franc");
 const express = require("express");
@@ -25,11 +24,9 @@ const express = require("express");
 // ---------- Config ----------
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const HF_API_KEY = process.env.HF_API_KEY;
-const HF_MODEL = "bigscience/bloomz";
-
-if (!DISCORD_TOKEN || !CLIENT_ID || !HF_API_KEY) {
-    console.error("❌ DISCORD_TOKEN, CLIENT_ID ou HF_API_KEY não definido!");
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+if (!DISCORD_TOKEN || !CLIENT_ID || !ANTHROPIC_API_KEY) {
+    console.error("❌ DISCORD_TOKEN, CLIENT_ID ou ANTHROPIC_API_KEY não definido!");
     process.exit(1);
 }
 
@@ -75,33 +72,29 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
 // ---------- Ready ----------
 client.once(Events.ClientReady, () => console.log(`Bot online: ${client.user.tag}`));
 
-// ---------- Hugging Face Chat ----------
-async function getHFResponse(userId, message, lang="eng") {
+// ---------- Claude Chat ----------
+async function getClaudeResponse(userId, message) {
     const history = conversations.get(userId) || [];
     history.push({ role: "user", content: message });
     if (history.length > 10) history.shift();
 
     try {
-        const res = await fetch(`https://api-inference.huggingface.co/models/${HF_MODEL}`, {
+        const res = await fetch("https://api.anthropic.com/v1/complete", {
             method: "POST",
             headers: {
-                "Authorization": `Bearer ${HF_API_KEY}`,
+                "Authorization": `Bearer ${ANTHROPIC_API_KEY}`,
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({ inputs: message })
+            body: JSON.stringify({
+                model: "claude-v1",
+                prompt: `You are a helpful assistant. Human: ${message} Assistant:`,
+                max_tokens_to_sample: 300
+            })
         });
         const data = await res.json();
+        const reply = data?.completion || "⚠️ AI could not generate a response, please try again.";
 
-        // ✅ Corrige diferentes formatos de retorno
-        let reply = null;
-        if (Array.isArray(data)) {
-            reply = data[0]?.generated_text || data[0]?.body || null;
-        } else {
-            reply = data?.generated_text || data?.body || null;
-        }
-
-        if (!reply) return "⚠️ AI could not generate a response, please try again.";
-
+        // Prevent duplicates
         if (lastReplies.get(userId) === reply) return null;
         lastReplies.set(userId, reply);
 
@@ -109,7 +102,7 @@ async function getHFResponse(userId, message, lang="eng") {
         conversations.set(userId, history);
         return reply;
     } catch(err){
-        console.error("❌ Hugging Face error:", err);
+        console.error("❌ Claude error:", err);
         return "⚠️ Failed to generate AI response.";
     }
 }
@@ -241,7 +234,7 @@ client.on(Events.MessageCreate, async message => {
     if (!conversations.has(userId)) conversations.set(userId, []);
     const lang = franc(message.content) || "eng";
 
-    const reply = await getHFResponse(userId, message.content, lang);
+    const reply = await getClaudeResponse(userId, message.content);
     if (reply) message.reply(reply);
 });
 
