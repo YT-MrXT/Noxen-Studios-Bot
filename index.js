@@ -8,6 +8,10 @@ const {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
+    ModalSubmitInteraction,
     REST,
     Routes,
     SlashCommandBuilder
@@ -82,6 +86,8 @@ client.once(Events.ClientReady, () => {
 
 // ---------- Interactions ----------
 client.on(Events.InteractionCreate, async interaction => {
+
+    // ---------- Slash Commands ----------
     if (interaction.isChatInputCommand()) {
         const userId = interaction.user.id;
         if (!conversations.has(userId)) conversations.set(userId, []);
@@ -101,11 +107,14 @@ client.on(Events.InteractionCreate, async interaction => {
                     .setLabel("🎫 Open Ticket")
                     .setStyle(ButtonStyle.Primary);
                 const row = new ActionRowBuilder().addComponents(button);
+
+                // **Mensagem visível para todos**
                 return interaction.reply({
-                    content: "🎫 Noxen Studios Support\nClick the button to open a ticket.",
+                    content: "🎫 Noxen Studios Support Panel\nClick the button to open a ticket.",
                     components: [row],
-                    ephemeral: true
+                    ephemeral: false // visível para todos
                 });
+
             case "ia":
                 const userMessage = interaction.options.getString("message");
                 history.push({ role: "user", content: userMessage });
@@ -131,9 +140,11 @@ client.on(Events.InteractionCreate, async interaction => {
         }
     }
 
+    // ---------- Buttons ----------
     if (interaction.isButton()) {
         const userId = interaction.user.id;
 
+        // ---------- Open Ticket ----------
         if (interaction.customId === "open_ticket") {
             if (userTickets.has(userId)) {
                 const channel = userTickets.get(userId);
@@ -154,15 +165,17 @@ client.on(Events.InteractionCreate, async interaction => {
 
                 userTickets.set(userId, channel);
 
-                // Buttons inside ticket
+                // Botões do ticket
                 const closeButton = new ButtonBuilder()
                     .setCustomId("close_ticket")
                     .setLabel("Close Ticket")
                     .setStyle(ButtonStyle.Danger);
+
                 const addUserButton = new ButtonBuilder()
                     .setCustomId("add_user")
                     .setLabel("Add User")
                     .setStyle(ButtonStyle.Secondary);
+
                 const row = new ActionRowBuilder().addComponents(closeButton, addUserButton);
 
                 await channel.send({
@@ -170,7 +183,8 @@ client.on(Events.InteractionCreate, async interaction => {
                     components: [row]
                 });
 
-                return interaction.reply({ content: `Ticket created: ${channel}`, ephemeral: true });
+                // **Mensagem de confirmação só para quem clicou**
+                return interaction.reply({ content: `✅ Your ticket has been created: ${channel}`, ephemeral: true });
 
             } catch (err) {
                 console.error("❌ Failed to create ticket:", err);
@@ -178,7 +192,7 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
 
-        // Close or add user buttons
+        // ---------- Close Ticket ----------
         if (interaction.customId === "close_ticket") {
             if (interaction.channel.type === ChannelType.GuildText) {
                 await interaction.channel.delete();
@@ -188,9 +202,52 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
 
+        // ---------- Add User ----------
         if (interaction.customId === "add_user") {
-            // aqui você pode adicionar lógica para pedir @mentions e permitir view
-            return interaction.reply({ content: "Feature to add user will be implemented.", ephemeral: true });
+            // Abrir modal para receber username ou ID
+            const modal = new ModalBuilder()
+                .setCustomId("add_user_modal")
+                .setTitle("Add User to Ticket");
+
+            const input = new TextInputBuilder()
+                .setCustomId("user_to_add")
+                .setLabel("Enter User ID or mention")
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder("@username")
+                .setRequired(true);
+
+            const row = new ActionRowBuilder().addComponents(input);
+            modal.addComponents(row);
+
+            return interaction.showModal(modal);
+        }
+    }
+
+    // ---------- Modal Submit ----------
+    if (interaction.isModalSubmit()) {
+        if (interaction.customId === "add_user_modal") {
+            const userInput = interaction.fields.getTextInputValue("user_to_add");
+
+            let userToAdd;
+            try {
+                // Tentativa de pegar ID ou menção
+                if (userInput.match(/^<@!?(\d+)>$/)) {
+                    const id = userInput.match(/^<@!?(\d+)>$/)[1];
+                    userToAdd = await interaction.guild.members.fetch(id);
+                } else {
+                    userToAdd = await interaction.guild.members.fetch(userInput);
+                }
+
+                if (!userToAdd) return interaction.reply({ content: "❌ User not found.", ephemeral: true });
+
+                await interaction.channel.permissionOverwrites.edit(userToAdd.id, { ViewChannel: true });
+
+                return interaction.reply({ content: `✅ ${userToAdd.user.tag} added to the ticket.`, ephemeral: true });
+
+            } catch (err) {
+                console.error("❌ Failed to add user:", err);
+                return interaction.reply({ content: "❌ Failed to add user.", ephemeral: true });
+            }
         }
     }
 });
@@ -198,7 +255,7 @@ client.on(Events.InteractionCreate, async interaction => {
 // ---------- DMs ----------
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot) return;
-    if (message.guild) return; // só DM
+    if (message.guild) return;
 
     const userId = message.author.id;
     if (!conversations.has(userId)) conversations.set(userId, []);
