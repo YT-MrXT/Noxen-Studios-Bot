@@ -1,4 +1,4 @@
-// index.js - Noxen Studios Bot Ultra (Google Gemini)
+// index.js - Noxen Studios Bot Ultra (Groq AI)
 
 const { 
   Client, GatewayIntentBits, Partials, Events,
@@ -8,12 +8,12 @@ const {
   SlashCommandBuilder, REST, Routes
 } = require("discord.js");
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Groq = require("groq-sdk");
 const express = require("express");
 
 // ---------- Config ----------
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const CLIENT_ID = process.env.CLIENT_ID;
 
 // ---------- Verificação ----------
@@ -35,15 +35,14 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-// ---------- Gemini ----------
-let model = null;
+// ---------- Groq ----------
+let groq = null;
 
-if (GEMINI_API_KEY) {
-  const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-  model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-  console.log("🔹 Gemini API carregada!");
+if (GROQ_API_KEY) {
+  groq = new Groq({ apiKey: GROQ_API_KEY });
+  console.log("🔹 Groq AI carregada!");
 } else {
-  console.warn("⚠️ GEMINI_API_KEY não definida. IA desativada.");
+  console.warn("⚠️ GROQ_API_KEY não definida. IA desativada.");
 }
 
 // ---------- Express ----------
@@ -85,44 +84,49 @@ client.once(Events.ClientReady, () => {
 // ---------- Função IA ----------
 async function getAIResponse(userId, message) {
 
-  if (!model) return "⚠️ AI is currently disabled.";
+  if (!groq) return "⚠️ AI is currently disabled.";
 
   if (!conversations.has(userId)) conversations.set(userId, []);
   const history = conversations.get(userId);
 
-  history.push(`User: ${message}`);
+  history.push({ role: "user", content: message });
 
-  const prompt = `
-You are the official assistant of Noxen Studios.
+  if (history.length > 10) history.shift();
+
+  try {
+
+    const completion = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        {
+          role: "system",
+          content: `You are the official assistant of Noxen Studios.
 Noxen Studios develops Roblox games.
 
 Website:
 https://noxenstd.wixsite.com/noxen-studios
 
 Always respond politely and professionally.
-Respond in the same language as the user.
+Respond in the same language as the user.`
+        },
+        ...history
+      ]
+    });
 
-Conversation:
-${history.join("\n")}
-`;
-
-  try {
-
-    const result = await model.generateContent(prompt);
-    const reply = result.response.text().trim();
+    const reply = completion.choices[0].message.content.trim();
 
     if (lastReplies.get(userId) === reply) return null;
 
     lastReplies.set(userId, reply);
-    history.push(`AI: ${reply}`);
-
-    if (history.length > 20) history.shift();
+    history.push({ role: "assistant", content: reply });
 
     return reply;
 
   } catch (err) {
-    console.error("❌ Gemini error:", err);
+
+    console.error("❌ Groq error:", err);
     return "⚠️ AI error occurred.";
+
   }
 }
 
