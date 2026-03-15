@@ -1,7 +1,5 @@
 // index.js - Noxen Studios Bot Ultra (Google Gemini)
 
-require('dotenv').config();
-
 const { 
   Client, GatewayIntentBits, Partials, Events,
   ChannelType, PermissionsBitField,
