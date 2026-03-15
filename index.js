@@ -10,9 +10,10 @@ const OpenAI = require("openai");
 const express = require("express");
 
 // ---------- Config ----------
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const CLIENT_ID = process.env.CLIENT_ID;
+// Coloque suas keys diretamente aqui
+const DISCORD_TOKEN = "SUA_DISCORD_TOKEN_AQUI";   // ← sua Discord Bot Token
+const OPENAI_API_KEY = "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"; // ← sua OpenAI API Key
+const CLIENT_ID = "SEU_CLIENT_ID_AQUI";          // ← seu Client ID
 
 if (!DISCORD_TOKEN || !OPENAI_API_KEY || !CLIENT_ID) {
   console.error("❌ DISCORD_TOKEN, OPENAI_API_KEY ou CLIENT_ID não definido!");
@@ -76,7 +77,7 @@ async function getAIResponse(userId, message) {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o-mini", // modelo potente
       messages: [
         {
           role: "system",
@@ -133,17 +134,15 @@ client.on(Events.InteractionCreate, async interaction => {
   }
 
   // IA Select Menu
-  if (interaction.isStringSelectMenu()) {
-    if (interaction.customId === "ia_options") {
-      switch (interaction.values[0]) {
-        case "new":
-        case "reset":
-          conversations.set(userId, []);
-          lastReplies.delete(userId);
-          return interaction.update({ content: "🧹 Chat reset.", components: [] });
-        case "continue":
-          return interaction.update({ content: "💬 Continue your chat by sending a DM.", components: [] });
-      }
+  if (interaction.isStringSelectMenu() && interaction.customId === "ia_options") {
+    switch (interaction.values[0]) {
+      case "new":
+      case "reset":
+        conversations.set(userId, []);
+        lastReplies.delete(userId);
+        return interaction.update({ content: "🧹 Chat reset.", components: [] });
+      case "continue":
+        return interaction.update({ content: "💬 Continue your chat by sending a DM.", components: [] });
     }
   }
 
