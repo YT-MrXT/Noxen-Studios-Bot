@@ -1,32 +1,18 @@
 const { 
-    Client, 
-    GatewayIntentBits, 
-    Partials, 
-    Events,
-    ChannelType,
-    PermissionsBitField,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    ModalBuilder,
-    TextInputBuilder,
-    TextInputStyle,
-    StringSelectMenuBuilder,
-    StringSelectMenuOptionBuilder,
-    SlashCommandBuilder,
-    REST,
-    Routes
+    Client, GatewayIntentBits, Partials, Events,
+    ChannelType, PermissionsBitField,
+    ActionRowBuilder, ButtonBuilder, ButtonStyle,
+    StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
+    SlashCommandBuilder, REST, Routes
 } = require("discord.js");
-const fetch = require("node-fetch");
-const franc = require("franc");
 const express = require("express");
+const franc = require("franc");
 
 // ---------- Config ----------
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-if (!DISCORD_TOKEN || !CLIENT_ID || !ANTHROPIC_API_KEY) {
-    console.error("❌ DISCORD_TOKEN, CLIENT_ID ou ANTHROPIC_API_KEY não definido!");
+if (!DISCORD_TOKEN || !CLIENT_ID) {
+    console.error("❌ DISCORD_TOKEN ou CLIENT_ID não definido!");
     process.exit(1);
 }
 
@@ -48,8 +34,8 @@ const lastReplies = new Map();
 
 // ---------- Express ----------
 const app = express();
-app.get("/", (req, res) => res.send("Noxen Studios Bot Online"));
-app.listen(process.env.PORT || 3000, () => console.log("Server running"));
+app.get("/", (req,res)=>res.send("Noxen Studios Bot Online"));
+app.listen(process.env.PORT || 3000);
 
 // ---------- Slash Commands ----------
 const commands = [
@@ -72,39 +58,23 @@ const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
 // ---------- Ready ----------
 client.once(Events.ClientReady, () => console.log(`Bot online: ${client.user.tag}`));
 
-// ---------- Claude Chat ----------
-async function getClaudeResponse(userId, message) {
+// ---------- GPT4All Chat ----------
+async function getGPTResponse(userId, message) {
     const history = conversations.get(userId) || [];
     history.push({ role: "user", content: message });
     if (history.length > 10) history.shift();
 
-    try {
-        const res = await fetch("https://api.anthropic.com/v1/complete", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${ANTHROPIC_API_KEY}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "claude-v1",
-                prompt: `You are a helpful assistant. Human: ${message} Assistant:`,
-                max_tokens_to_sample: 300
-            })
-        });
-        const data = await res.json();
-        const reply = data?.completion || "⚠️ AI could not generate a response, please try again.";
+    // Aqui você chama a biblioteca GPT4All local
+    // Exemplo fictício: replace por código real GPT4All
+    let reply = `🤖 (Simulated GPT4All response) You said: ${message}`;
 
-        // Prevent duplicates
-        if (lastReplies.get(userId) === reply) return null;
-        lastReplies.set(userId, reply);
+    // Prevenir duplicados
+    if (lastReplies.get(userId) === reply) return null;
+    lastReplies.set(userId, reply);
 
-        history.push({ role:"assistant", content: reply });
-        conversations.set(userId, history);
-        return reply;
-    } catch(err){
-        console.error("❌ Claude error:", err);
-        return "⚠️ Failed to generate AI response.";
-    }
+    history.push({ role:"assistant", content: reply });
+    conversations.set(userId, history);
+    return reply;
 }
 
 // ---------- Interactions ----------
@@ -114,8 +84,6 @@ client.on(Events.InteractionCreate, async interaction => {
     // Slash Commands
     if (interaction.isChatInputCommand()) {
         if (!conversations.has(userId)) conversations.set(userId, []);
-        const history = conversations.get(userId);
-
         switch (interaction.commandName) {
             case "newchat":
                 conversations.set(userId, []);
@@ -130,8 +98,7 @@ client.on(Events.InteractionCreate, async interaction => {
                     .setCustomId("open_ticket")
                     .setLabel("🎫 Open Ticket")
                     .setStyle(ButtonStyle.Primary);
-                const row = new ActionRowBuilder().addComponents(button);
-                return interaction.reply({ content: "🎫 Noxen Studios Support Panel\nClick the button to open a ticket.", components: [row], ephemeral: false });
+                return interaction.reply({ content: "🎫 Noxen Studios Support Panel\nClick the button to open a ticket.", components: [new ActionRowBuilder().addComponents(button)], ephemeral: false });
             case "ia":
                 const menu = new StringSelectMenuBuilder()
                     .setCustomId("ia_options")
@@ -141,14 +108,12 @@ client.on(Events.InteractionCreate, async interaction => {
                         new StringSelectMenuOptionBuilder().setLabel("New Chat").setValue("new"),
                         new StringSelectMenuOptionBuilder().setLabel("Reset Chat").setValue("reset")
                     );
-                const menuRow = new ActionRowBuilder().addComponents(menu);
-                return interaction.reply({ content: "💬 Noxen AI Options", components: [menuRow], ephemeral: true });
+                return interaction.reply({ content: "💬 Noxen AI Options", components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
         }
     }
 
     // Select Menu
     if (interaction.isStringSelectMenu()) {
-        if (!conversations.has(userId)) conversations.set(userId, []);
         switch (interaction.values[0]) {
             case "new":
             case "reset":
@@ -156,7 +121,7 @@ client.on(Events.InteractionCreate, async interaction => {
                 lastReplies.delete(userId);
                 return interaction.update({ content: "🧹 Chat reset.", components: [] });
             case "continue":
-                return interaction.update({ content: "💬 Continue your chat by sending a DM or using /ia again.", components: [] });
+                return interaction.update({ content: "💬 Continue your chat by sending a DM.", components: [] });
         }
     }
 
@@ -164,29 +129,25 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isButton()) {
         if (interaction.customId === "open_ticket") {
             if (userTickets.has(userId)) {
-                const channel = userTickets.get(userId);
-                return interaction.reply({ content: `You already have an open ticket: ${channel}`, ephemeral: true });
+                return interaction.reply({ content: `You already have an open ticket: ${userTickets.get(userId)}`, ephemeral: true });
             }
             const safeName = interaction.user.username.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
-            try {
-                const channel = await interaction.guild.channels.create({
-                    name: `ticket-${safeName}`,
-                    type: ChannelType.GuildText,
-                    permissionOverwrites: [
-                        { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-                        { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] }
-                    ]
-                });
-                userTickets.set(userId, channel);
-
-                const closeButton = new ButtonBuilder().setCustomId("close_ticket").setLabel("Close Ticket").setStyle(ButtonStyle.Danger);
-                const addUserButton = new ButtonBuilder().setCustomId("add_user").setLabel("Add User").setStyle(ButtonStyle.Secondary);
-                const row = new ActionRowBuilder().addComponents(closeButton, addUserButton);
-
-                await channel.send({ content: `🎫 Ticket opened by ${interaction.user}. Explain your issue and the Noxen team will respond.`, components: [row] });
-
-                return interaction.reply({ content: `✅ Your ticket has been created: ${channel}`, ephemeral: true });
-            } catch (err) { console.error(err); return interaction.reply({ content: "❌ Failed to create ticket.", ephemeral: true }); }
+            const channel = await interaction.guild.channels.create({
+                name: `ticket-${safeName}`,
+                type: ChannelType.GuildText,
+                permissionOverwrites: [
+                    { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+                    { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] }
+                ]
+            });
+            userTickets.set(userId, channel);
+            const row = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder().setCustomId("close_ticket").setLabel("Close Ticket").setStyle(ButtonStyle.Danger),
+                    new ButtonBuilder().setCustomId("add_user").setLabel("Add User").setStyle(ButtonStyle.Secondary)
+                );
+            await channel.send({ content: `🎫 Ticket opened by ${interaction.user}`, components: [row] });
+            return interaction.reply({ content: `✅ Your ticket has been created: ${channel}`, ephemeral: true });
         }
 
         if (interaction.customId === "close_ticket") {
@@ -194,33 +155,6 @@ client.on(Events.InteractionCreate, async interaction => {
                 await interaction.channel.delete();
                 userTickets.forEach((ch, uid) => { if (ch.id === interaction.channel.id) userTickets.delete(uid); });
             }
-        }
-
-        if (interaction.customId === "add_user") {
-            const modal = new ModalBuilder().setCustomId("add_user_modal").setTitle("Add User to Ticket");
-            const input = new TextInputBuilder().setCustomId("user_to_add").setLabel("Enter User ID or mention").setStyle(TextInputStyle.Short).setPlaceholder("@username").setRequired(true);
-            const row = new ActionRowBuilder().addComponents(input);
-            modal.addComponents(row);
-            return interaction.showModal(modal);
-        }
-    }
-
-    // Modal Submit
-    if (interaction.isModalSubmit()) {
-        if (interaction.customId === "add_user_modal") {
-            const userInput = interaction.fields.getTextInputValue("user_to_add");
-            try {
-                let userToAdd;
-                if (userInput.match(/^<@!?(\d+)>$/)) {
-                    const id = userInput.match(/^<@!?(\d+)>$/)[1];
-                    userToAdd = await interaction.guild.members.fetch(id);
-                } else {
-                    userToAdd = await interaction.guild.members.fetch(userInput);
-                }
-                if (!userToAdd) return interaction.reply({ content: "❌ User not found.", ephemeral: true });
-                await interaction.channel.permissionOverwrites.edit(userToAdd.id, { ViewChannel: true });
-                return interaction.reply({ content: `✅ ${userToAdd.user.tag} added to the ticket.`, ephemeral: true });
-            } catch (err) { console.error(err); return interaction.reply({ content: "❌ Failed to add user.", ephemeral: true }); }
         }
     }
 });
@@ -232,9 +166,7 @@ client.on(Events.MessageCreate, async message => {
 
     const userId = message.author.id;
     if (!conversations.has(userId)) conversations.set(userId, []);
-    const lang = franc(message.content) || "eng";
-
-    const reply = await getClaudeResponse(userId, message.content);
+    const reply = await getGPTResponse(userId, message.content);
     if (reply) message.reply(reply);
 });
 
