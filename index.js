@@ -1,4 +1,4 @@
-// index.js - Noxen Studios Bot Ultra (robusto)
+// index.js - Noxen Studios Bot Ultra (robusto, seguro e pronto para .env)
 require('dotenv').config(); // Carrega variáveis do .env
 
 const { 
@@ -18,12 +18,12 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const PORT = process.env.PORT || 3000;
 
 // ---------- Verificação das keys ----------
-if (!DISCORD_TOKEN || !OPENAI_API_KEY || !CLIENT_ID) {
-  console.error("❌ Alguma variável de ambiente não definida! Verifique .env");
+if (!DISCORD_TOKEN || !CLIENT_ID) {
+  console.error("❌ DISCORD_TOKEN ou CLIENT_ID não definido! Corrija seu .env");
   process.exit(1);
 }
 
-console.log("🔹 Variáveis de ambiente carregadas com sucesso!");
+console.log("🔹 Discord token e Client ID carregados!");
 
 // ---------- Client ----------
 const client = new Client({
@@ -37,7 +37,13 @@ const client = new Client({
 });
 
 // ---------- OpenAI ----------
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+let openai = null;
+if (OPENAI_API_KEY) {
+  openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+  console.log("🔹 OpenAI key carregada!");
+} else {
+  console.warn("⚠️ OPENAI_API_KEY não definida. Função de IA desativada até configurar a key.");
+}
 
 // ---------- Express ----------
 const app = express();
@@ -59,7 +65,6 @@ const commands = [
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
-
 (async () => {
   try {
     console.log("🔹 Registrando comandos globais...");
@@ -77,6 +82,8 @@ client.once(Events.ClientReady, () => {
 
 // ---------- Função de IA ----------
 async function getAIResponse(userId, message) {
+  if (!openai) return null; // não tenta responder se a key não existe
+
   if (!conversations.has(userId)) conversations.set(userId, []);
   const history = conversations.get(userId);
 
@@ -107,7 +114,7 @@ Always respond politely and professionally, in the user's language.`
 
   } catch (err) {
     console.error("❌ OpenAI error:", err);
-    return "⚠️ Error generating response. Check your OpenAI key or try again later.";
+    return "⚠️ Não foi possível gerar resposta. A IA está desativada ou a key é inválida.";
   }
 }
 
