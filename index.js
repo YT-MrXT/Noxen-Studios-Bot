@@ -11,10 +11,11 @@ const {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    ModalSubmitInteraction,
     REST,
     Routes,
-    SlashCommandBuilder
+    SlashCommandBuilder,
+    StringSelectMenuBuilder,
+    StringSelectMenuOptionBuilder
 } = require("discord.js");
 
 const OpenAI = require("openai");
@@ -52,7 +53,6 @@ const client = new Client({
 
 // ---------- Storage ----------
 const conversations = new Map();
-const processing = new Set();
 const userTickets = new Map();
 
 // ---------- Express ----------
@@ -62,12 +62,21 @@ app.listen(process.env.PORT || 3000, () => console.log("Server running"));
 
 // ---------- Slash Commands ----------
 const commands = [
-    new SlashCommandBuilder().setName("ia").setDescription("Talk to Noxen AI").addStringOption(opt =>
-        opt.setName("message").setDescription("Your message").setRequired(true)),
-    new SlashCommandBuilder().setName("ticket_panel").setDescription("Show ticket panel"),
-    new SlashCommandBuilder().setName("newchat").setDescription("Reset AI chat"),
-    new SlashCommandBuilder().setName("site").setDescription("Show Noxen site"),
-    new SlashCommandBuilder().setName("contact").setDescription("Show contact email")
+    new SlashCommandBuilder()
+        .setName("ia")
+        .setDescription("Talk to Noxen AI"),
+    new SlashCommandBuilder()
+        .setName("ticket_panel")
+        .setDescription("Show ticket panel"),
+    new SlashCommandBuilder()
+        .setName("newchat")
+        .setDescription("Reset AI chat"),
+    new SlashCommandBuilder()
+        .setName("site")
+        .setDescription("Show Noxen site"),
+    new SlashCommandBuilder()
+        .setName("contact")
+        .setDescription("Show contact email")
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
@@ -97,46 +106,54 @@ client.on(Events.InteractionCreate, async interaction => {
             case "newchat":
                 conversations.set(userId, []);
                 return interaction.reply("🧹 Chat reset.");
+
             case "site":
                 return interaction.reply("🌐 https://noxenstd.wixsite.com/noxen-studios");
+
             case "contact":
-                return interaction.reply("📧 noxenstds@gmail.com");
+                return interaction.reply({ content: "📧 noxenstds@gmail.com", ephemeral: true });
+
             case "ticket_panel":
                 const button = new ButtonBuilder()
                     .setCustomId("open_ticket")
                     .setLabel("🎫 Open Ticket")
                     .setStyle(ButtonStyle.Primary);
                 const row = new ActionRowBuilder().addComponents(button);
-
-                // **Mensagem visível para todos**
                 return interaction.reply({
                     content: "🎫 Noxen Studios Support Panel\nClick the button to open a ticket.",
                     components: [row],
-                    ephemeral: false // visível para todos
+                    ephemeral: false
                 });
 
             case "ia":
-                const userMessage = interaction.options.getString("message");
-                history.push({ role: "user", content: userMessage });
-                while (history.length > 10) history.shift();
+                // Envia menu de opções
+                const menu = new StringSelectMenuBuilder()
+                    .setCustomId("ia_options")
+                    .setPlaceholder("Select an option")
+                    .addOptions(
+                        new StringSelectMenuOptionBuilder().setLabel("Continue Chat").setValue("continue"),
+                        new StringSelectMenuOptionBuilder().setLabel("New Chat").setValue("new"),
+                        new StringSelectMenuOptionBuilder().setLabel("Reset Chat").setValue("reset")
+                    );
 
-                if (!openai) return interaction.reply("💬 AI not available.");
+                const menuRow = new ActionRowBuilder().addComponents(menu);
+                return interaction.reply({ content: "💬 Noxen AI Options", components: [menuRow], ephemeral: true });
+        }
+    }
 
-                try {
-                    const completion = await openai.chat.completions.create({
-                        model: "gpt-3.5-turbo",
-                        messages: [
-                            { role: "system", content: "You are the official Noxen Studios assistant. Reply in any language automatically." },
-                            ...history
-                        ]
-                    });
-                    const reply = completion.choices[0].message.content;
-                    history.push({ role: "assistant", content: reply });
-                    return interaction.reply(reply);
-                } catch (err) {
-                    console.error("⚠️ OpenAI failed:", err);
-                    return interaction.reply("⚠️ Failed to generate AI response. Check your API key or try later.");
-                }
+    // ---------- Select Menu ----------
+    if (interaction.isStringSelectMenu()) {
+        const userId = interaction.user.id;
+        if (!conversations.has(userId)) conversations.set(userId, []);
+        const history = conversations.get(userId);
+
+        switch (interaction.values[0]) {
+            case "new":
+            case "reset":
+                conversations.set(userId, []);
+                return interaction.update({ content: "🧹 Chat reset.", components: [] });
+            case "continue":
+                return interaction.update({ content: "💬 Continue your chat by sending a DM to the bot or using /ia again.", components: [] });
         }
     }
 
@@ -144,7 +161,7 @@ client.on(Events.InteractionCreate, async interaction => {
     if (interaction.isButton()) {
         const userId = interaction.user.id;
 
-        // ---------- Open Ticket ----------
+        // Open Ticket
         if (interaction.customId === "open_ticket") {
             if (userTickets.has(userId)) {
                 const channel = userTickets.get(userId);
@@ -165,7 +182,7 @@ client.on(Events.InteractionCreate, async interaction => {
 
                 userTickets.set(userId, channel);
 
-                // Botões do ticket
+                // Buttons inside ticket
                 const closeButton = new ButtonBuilder()
                     .setCustomId("close_ticket")
                     .setLabel("Close Ticket")
@@ -183,7 +200,6 @@ client.on(Events.InteractionCreate, async interaction => {
                     components: [row]
                 });
 
-                // **Mensagem de confirmação só para quem clicou**
                 return interaction.reply({ content: `✅ Your ticket has been created: ${channel}`, ephemeral: true });
 
             } catch (err) {
@@ -192,7 +208,7 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
 
-        // ---------- Close Ticket ----------
+        // Close Ticket
         if (interaction.customId === "close_ticket") {
             if (interaction.channel.type === ChannelType.GuildText) {
                 await interaction.channel.delete();
@@ -202,9 +218,8 @@ client.on(Events.InteractionCreate, async interaction => {
             }
         }
 
-        // ---------- Add User ----------
+        // Add User
         if (interaction.customId === "add_user") {
-            // Abrir modal para receber username ou ID
             const modal = new ModalBuilder()
                 .setCustomId("add_user_modal")
                 .setTitle("Add User to Ticket");
@@ -230,7 +245,6 @@ client.on(Events.InteractionCreate, async interaction => {
 
             let userToAdd;
             try {
-                // Tentativa de pegar ID ou menção
                 if (userInput.match(/^<@!?(\d+)>$/)) {
                     const id = userInput.match(/^<@!?(\d+)>$/)[1];
                     userToAdd = await interaction.guild.members.fetch(id);
