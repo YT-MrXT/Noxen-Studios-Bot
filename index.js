@@ -1,5 +1,6 @@
-// index.js - Noxen Studios Bot Ultra (seguro, usando .env)
-require('dotenv').config(); // carregando variáveis do .env
+// index.js - Noxen Studios Bot Ultra (robusto e seguro)
+require('dotenv').config(); // garante carregar variáveis do .env
+
 const { 
   Client, GatewayIntentBits, Partials, Events,
   ChannelType, PermissionsBitField,
@@ -11,14 +12,23 @@ const OpenAI = require("openai");
 const express = require("express");
 
 // ---------- Config ----------
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;     // sua Discord Bot Token
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;   // sua OpenAI API Key
-const CLIENT_ID = process.env.CLIENT_ID;            // Client ID do bot
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const CLIENT_ID = process.env.CLIENT_ID;
+const PORT = process.env.PORT || 3000;
 
-if (!DISCORD_TOKEN || !OPENAI_API_KEY || !CLIENT_ID) {
-  console.error("❌ DISCORD_TOKEN, OPENAI_API_KEY ou CLIENT_ID não definido!");
-  process.exit(1);
-}
+// ---------- Verificação das keys ----------
+if (!DISCORD_TOKEN) console.error("❌ DISCORD_TOKEN não definido!");
+if (!OPENAI_API_KEY) console.error("❌ OPENAI_API_KEY não definido!");
+if (!CLIENT_ID) console.error("❌ CLIENT_ID não definido!");
+
+if (!DISCORD_TOKEN || !OPENAI_API_KEY || !CLIENT_ID) process.exit(1);
+
+// ---------- Debug para garantir que Node lê as keys ----------
+console.log("🔹 Variáveis de ambiente carregadas:");
+console.log("DISCORD_TOKEN:", DISCORD_TOKEN ? "✅ encontrada" : "❌ não encontrada");
+console.log("OPENAI_API_KEY:", OPENAI_API_KEY ? "✅ encontrada" : "❌ não encontrada");
+console.log("CLIENT_ID:", CLIENT_ID ? "✅ encontrada" : "❌ não encontrada");
 
 // ---------- Client ----------
 const client = new Client({
@@ -37,7 +47,7 @@ const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 // ---------- Express ----------
 const app = express();
 app.get("/", (req,res) => res.send("🤖 Noxen Studios Bot Online!"));
-app.listen(process.env.PORT || 3000, () => console.log("Servidor web ativo..."));
+app.listen(PORT, () => console.log(`Servidor web ativo na porta ${PORT}...`));
 
 // ---------- Storage ----------
 const conversations = new Map();
@@ -54,12 +64,15 @@ const commands = [
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
+
 (async () => {
   try {
-    console.log("🔹 Registering global commands...");
+    console.log("🔹 Registrando comandos globais...");
     await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-    console.log("✅ Global commands registered!");
-  } catch (err) { console.error(err); }
+    console.log("✅ Comandos registrados!");
+  } catch (err) {
+    console.error("❌ Erro ao registrar comandos:", err);
+  }
 })();
 
 // ---------- Ready ----------
@@ -77,9 +90,9 @@ async function getAIResponse(userId, message) {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",       // modelo potente
-      temperature: 0.7,           // criatividade
-      max_tokens: 500,            // tamanho máximo da resposta
+      model: "gpt-4o-mini",   // modelo potente
+      temperature: 0.7,
+      max_tokens: 500,
       messages: [
         {
           role: "system",
@@ -96,9 +109,10 @@ Always respond politely and professionally, in the user's language.`
     lastReplies.set(userId, reply);
     history.push({ role: "assistant", content: reply });
     return reply;
+
   } catch (err) {
     console.error("❌ OpenAI error:", err);
-    return "⚠️ Error generating response. Check your API key or try again later.";
+    return "⚠️ Error generating response. Check your OpenAI key or try again later.";
   }
 }
 
@@ -186,7 +200,7 @@ client.on(Events.InteractionCreate, async interaction => {
 // ---------- DMs ----------
 client.on(Events.MessageCreate, async message => {
   if (message.author.bot) return;
-  if (message.guild) return; // Somente DMs
+  if (message.guild) return;
   if (respondedMessages.has(message.id)) return;
   respondedMessages.add(message.id);
 
