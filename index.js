@@ -1,5 +1,5 @@
-// index.js - Noxen Studios Bot Ultra (robusto e seguro)
-require('dotenv').config(); // garante carregar variáveis do .env
+// index.js - Noxen Studios Bot Ultra (robusto)
+require('dotenv').config(); // Carrega variáveis do .env
 
 const { 
   Client, GatewayIntentBits, Partials, Events,
@@ -18,17 +18,12 @@ const CLIENT_ID = process.env.CLIENT_ID;
 const PORT = process.env.PORT || 3000;
 
 // ---------- Verificação das keys ----------
-if (!DISCORD_TOKEN) console.error("❌ DISCORD_TOKEN não definido!");
-if (!OPENAI_API_KEY) console.error("❌ OPENAI_API_KEY não definido!");
-if (!CLIENT_ID) console.error("❌ CLIENT_ID não definido!");
+if (!DISCORD_TOKEN || !OPENAI_API_KEY || !CLIENT_ID) {
+  console.error("❌ Alguma variável de ambiente não definida! Verifique .env");
+  process.exit(1);
+}
 
-if (!DISCORD_TOKEN || !OPENAI_API_KEY || !CLIENT_ID) process.exit(1);
-
-// ---------- Debug para garantir que Node lê as keys ----------
-console.log("🔹 Variáveis de ambiente carregadas:");
-console.log("DISCORD_TOKEN:", DISCORD_TOKEN ? "✅ encontrada" : "❌ não encontrada");
-console.log("OPENAI_API_KEY:", OPENAI_API_KEY ? "✅ encontrada" : "❌ não encontrada");
-console.log("CLIENT_ID:", CLIENT_ID ? "✅ encontrada" : "❌ não encontrada");
+console.log("🔹 Variáveis de ambiente carregadas com sucesso!");
 
 // ---------- Client ----------
 const client = new Client({
@@ -90,7 +85,7 @@ async function getAIResponse(userId, message) {
 
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",   // modelo potente
+      model: "gpt-4o-mini",
       temperature: 0.7,
       max_tokens: 500,
       messages: [
@@ -120,7 +115,6 @@ Always respond politely and professionally, in the user's language.`
 client.on(Events.InteractionCreate, async interaction => {
   const userId = interaction.user.id;
 
-  // Slash Commands
   if (interaction.isChatInputCommand()) {
     switch (interaction.commandName) {
       case "ia":
@@ -149,7 +143,6 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 
-  // IA Select Menu
   if (interaction.isStringSelectMenu() && interaction.customId === "ia_options") {
     switch (interaction.values[0]) {
       case "new":
@@ -162,7 +155,6 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 
-  // Ticket Buttons
   if (interaction.isButton()) {
     if (interaction.customId === "open_ticket") {
       if (userTickets.has(userId)) return interaction.reply({ content: `You already have an open ticket: ${userTickets.get(userId)}`, ephemeral: true });
