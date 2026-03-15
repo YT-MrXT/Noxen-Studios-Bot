@@ -1,14 +1,14 @@
-
+{
   "name": "noxen-studios-bot",
   "version": "1.0.0",
-  "description": "Noxen Studios Discord Bot",
+  "description": "Ultra bot Noxen Studios com Groq AI",
   "main": "index.js",
   "type": "commonjs",
-  "engines": {
-    "node": ">=18"
-  },
   "scripts": {
     "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "discord.js": "^14.16.3",
