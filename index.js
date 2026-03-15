@@ -38,13 +38,9 @@ const client = new Client({
     partials:[Partials.Channel]
 });
 
-// ---------- Histórico de conversas ----------
+// ---------- Histórico e controle ----------
 const conversations = new Map();
-
-// ---------- Controle de duplicação ----------
 const processing = new Set();
-
-// ---------- Controle de tickets ----------
 const userTickets = new Map();
 
 // ---------- Servidor Express ----------
@@ -87,7 +83,6 @@ client.on(Events.MessageCreate, async message => {
         }
 
         if (msg === "/ticket") {
-            // Verifica se já existe ticket
             if (userTickets.has(userId)) {
                 const channel = userTickets.get(userId);
                 return message.reply(`Você já possui um ticket aberto: ${channel}`);
@@ -110,11 +105,10 @@ client.on(Events.MessageCreate, async message => {
         history.push({ role: "user", content: message.content });
         while (history.length > 10) history.shift();
 
-        // -------- Testa se OpenAI responde ----------
-        let completion;
+        // -------- OpenAI ----------
         try {
-            completion = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
+            const completion = await openai.chat.completions.create({
+                model: "gpt-3.5-turbo",
                 messages: [
                     {
                         role: "system",
@@ -129,33 +123,15 @@ Responda em qualquer idioma automaticamente.
                     ...history
                 ]
             });
-        } catch (err) {
-            console.warn("⚠️ gpt-4o-mini falhou, tentando gpt-3.5-turbo...", err);
-            // Tenta modelo alternativo
-            try {
-                completion = await openai.chat.completions.create({
-                    model: "gpt-3.5-turbo",
-                    messages: [
-                        {
-                            role: "system",
-                            content: `
-Você é o assistente oficial da Noxen Studios.
-Empresa que desenvolve jogos Roblox.
-Responda em qualquer idioma automaticamente.
-                        `
-                        },
-                        ...history
-                    ]
-                });
-            } catch (err2) {
-                console.error("❌ Erro OpenAI:", err2);
-                return message.reply("❌ Erro ao gerar resposta. Confira a chave API ou tente novamente mais tarde.");
-            }
-        }
 
-        const reply = completion.choices[0].message.content;
-        history.push({ role: "assistant", content: reply });
-        await message.reply(reply);
+            const reply = completion.choices[0].message.content;
+            history.push({ role: "assistant", content: reply });
+            await message.reply(reply);
+
+        } catch (err) {
+            console.error("❌ Erro OpenAI:", err);
+            await message.reply("❌ Erro ao gerar resposta. Confira a chave API ou tente novamente mais tarde.");
+        }
 
     } finally {
         processing.delete(userId);
@@ -210,5 +186,5 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
-// ---------- Login do bot ----------
+// ---------- Login ----------
 client.login(process.env.DISCORD_TOKEN);
