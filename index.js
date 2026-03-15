@@ -19,11 +19,10 @@ const express = require("express");
 // ---------- Configurações ----------
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID; // ID do bot
-const GUILD_ID = process.env.GUILD_ID;   // ID do servidor (guild) para registrar comandos
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-if (!DISCORD_TOKEN || !CLIENT_ID || !GUILD_ID) {
-    console.error("❌ DISCORD_TOKEN, CLIENT_ID ou GUILD_ID não definido!");
+if (!DISCORD_TOKEN || !CLIENT_ID) {
+    console.error("❌ DISCORD_TOKEN ou CLIENT_ID não definido!");
     process.exit(1);
 }
 
@@ -58,28 +57,22 @@ const PORT = process.env.PORT || 3000;
 app.get("/", (req, res) => res.send("Noxen Studios Bot Online"));
 app.listen(PORT, () => console.log(`Servidor Express rodando na porta ${PORT}`));
 
-// ---------- Registro de Slash Commands ----------
+// ---------- Registro de Slash Commands Globais ----------
 const commands = [
-    new SlashCommandBuilder()
-        .setName("ticket")
-        .setDescription("Abrir um ticket de suporte"),
-    new SlashCommandBuilder()
-        .setName("newchat")
-        .setDescription("Reiniciar a conversa com a IA"),
-    new SlashCommandBuilder()
-        .setName("site")
-        .setDescription("Mostrar o site da Noxen Studios"),
-    new SlashCommandBuilder()
-        .setName("contact")
-        .setDescription("Mostrar email para contato")
+    new SlashCommandBuilder().setName("ia").setDescription("Fala com a IA da Noxen Studios").addStringOption(option =>
+        option.setName("mensagem").setDescription("Sua mensagem para a IA").setRequired(true)),
+    new SlashCommandBuilder().setName("ticket").setDescription("Abrir um ticket de suporte"),
+    new SlashCommandBuilder().setName("newchat").setDescription("Reiniciar a conversa com a IA"),
+    new SlashCommandBuilder().setName("site").setDescription("Mostrar o site da Noxen Studios"),
+    new SlashCommandBuilder().setName("contact").setDescription("Mostrar email para contato")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
 (async () => {
     try {
-        console.log("🔹 Registrando comandos...");
-        await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-        console.log("✅ Comandos registrados com sucesso!");
+        console.log("🔹 Registrando comandos globais...");
+        await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+        console.log("✅ Comandos globais registrados com sucesso!");
     } catch (err) {
         console.error(err);
     }
@@ -92,10 +85,8 @@ client.once(Events.ClientReady, () => {
 
 // ---------- Interações ----------
 client.on(Events.InteractionCreate, async interaction => {
-
     if (interaction.isChatInputCommand()) {
         const userId = interaction.user.id;
-
         if (!conversations.has(userId)) conversations.set(userId, []);
         const history = conversations.get(userId);
 
@@ -124,13 +115,39 @@ client.on(Events.InteractionCreate, async interaction => {
                     components: [row],
                     ephemeral: true
                 });
+
+            case "ia":
+                const userMessage = interaction.options.getString("mensagem");
+
+                history.push({ role: "user", content: userMessage });
+                while (history.length > 10) history.shift();
+
+                if (!openai) {
+                    return interaction.reply("💬 IA não disponível no momento.");
+                }
+
+                try {
+                    const completion = await openai.chat.completions.create({
+                        model: "gpt-3.5-turbo",
+                        messages: [
+                            { role: "system", content: "Você é o assistente oficial da Noxen Studios. Responda em qualquer idioma automaticamente." },
+                            ...history
+                        ]
+                    });
+                    const reply = completion.choices[0].message.content;
+                    history.push({ role: "assistant", content: reply });
+                    await interaction.reply(reply);
+                } catch (err) {
+                    console.error("⚠️ OpenAI falhou:", err);
+                    await interaction.reply("⚠️ Erro ao gerar resposta. Confira a chave API ou tente novamente mais tarde.");
+                }
+                break;
         }
     }
 
     if (interaction.isButton()) {
         if (interaction.customId === "open_ticket") {
             const userId = interaction.user.id;
-
             if (userTickets.has(userId)) {
                 const channel = userTickets.get(userId);
                 return interaction.reply({ content: `Você já possui um ticket aberto: ${channel}`, ephemeral: true });
@@ -161,39 +178,34 @@ client.on(Events.InteractionCreate, async interaction => {
     }
 });
 
-// ---------- Mensagens para IA (opcional) ----------
+// ---------- Mensagens em DMs ----------
 client.on(Events.MessageCreate, async message => {
     if (message.author.bot) return;
-    if (!openai) return; // se IA não estiver ativada
+    if (message.guild) return; // só processa DMs
 
     const userId = message.author.id;
-    if (processing.has(userId)) return;
-    processing.add(userId);
+    if (!conversations.has(userId)) conversations.set(userId, []);
+    const history = conversations.get(userId);
+
+    history.push({ role: "user", content: message.content });
+    while (history.length > 10) history.shift();
+
+    if (!openai) return message.reply("💬 IA não disponível no momento.");
 
     try {
-        if (!conversations.has(userId)) conversations.set(userId, []);
-        const history = conversations.get(userId);
-
-        history.push({ role: "user", content: message.content });
-        while (history.length > 10) history.shift();
-
-        try {
-            const completion = await openai.chat.completions.create({
-                model: "gpt-3.5-turbo",
-                messages: [
-                    { role: "system", content: "Você é o assistente oficial da Noxen Studios. Responda em qualquer idioma automaticamente." },
-                    ...history
-                ]
-            });
-            const reply = completion.choices[0].message.content;
-            history.push({ role: "assistant", content: reply });
-            await message.reply(reply);
-        } catch (err) {
-            console.error("⚠️ OpenAI falhou:", err);
-            await message.reply("⚠️ IA não respondeu, mas o bot continua funcionando normalmente.");
-        }
-    } finally {
-        processing.delete(userId);
+        const completion = await openai.chat.completions.create({
+            model: "gpt-3.5-turbo",
+            messages: [
+                { role: "system", content: "Você é o assistente oficial da Noxen Studios. Responda em qualquer idioma automaticamente." },
+                ...history
+            ]
+        });
+        const reply = completion.choices[0].message.content;
+        history.push({ role: "assistant", content: reply });
+        await message.reply(reply);
+    } catch (err) {
+        console.error("⚠️ OpenAI falhou:", err);
+        await message.reply("⚠️ Erro ao gerar resposta. Confira a chave API ou tente novamente mais tarde.");
     }
 });
 
