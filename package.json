@@ -1,4 +1,4 @@
-{
+
   "name": "noxen-studios-bot",
   "version": "1.0.0",
   "description": "Noxen Studios Discord Bot",
@@ -11,8 +11,8 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "express": "^4.18.2",
-    "@google/generative-ai": "^0.21.0"
+    "discord.js": "^14.16.3",
+    "express": "^4.19.2",
+    "groq-sdk": "^0.5.0"
   }
 }
