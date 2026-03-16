@@ -1,4 +1,5 @@
 // index.js - Noxen Studios Bot Ultra (Groq AI)
+
 const { 
   Client, GatewayIntentBits, Partials, Events,
   ChannelType, PermissionsBitField,
@@ -20,6 +21,7 @@ if (!DISCORD_TOKEN || !CLIENT_ID) {
   console.error("❌ DISCORD_TOKEN ou CLIENT_ID não definido!");
   process.exit(1);
 }
+
 console.log("🔹 Discord token e Client ID carregados!");
 
 // ---------- Client ----------
@@ -35,6 +37,7 @@ const client = new Client({
 
 // ---------- Groq ----------
 let groq = null;
+
 if (GROQ_API_KEY) {
   groq = new Groq({ apiKey: GROQ_API_KEY });
   console.log("🔹 Groq AI carregada!");
@@ -62,6 +65,7 @@ const commands = [
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
+
 (async () => {
   try {
     console.log("🔹 Registrando comandos globais...");
@@ -79,15 +83,18 @@ client.once(Events.ClientReady, () => {
 
 // ---------- Função IA ----------
 async function getAIResponse(userId, message) {
+
   if (!groq) return "⚠️ AI is currently disabled.";
 
   if (!conversations.has(userId)) conversations.set(userId, []);
   const history = conversations.get(userId);
 
   history.push({ role: "user", content: message });
+
   if (history.length > 10) history.shift();
 
   try {
+
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       messages: [
@@ -107,25 +114,33 @@ Respond in the same language as the user.`
     });
 
     const reply = completion.choices[0].message.content.trim();
+
     if (lastReplies.get(userId) === reply) return null;
 
     lastReplies.set(userId, reply);
     history.push({ role: "assistant", content: reply });
 
     return reply;
+
   } catch (err) {
+
     console.error("❌ Groq error:", err);
     return "⚠️ AI error occurred.";
+
   }
 }
 
 // ---------- Interactions ----------
 client.on(Events.InteractionCreate, async interaction => {
+
   const userId = interaction.user.id;
 
   if (interaction.isChatInputCommand()) {
+
     switch (interaction.commandName) {
+
       case "ia":
+
         const menu = new StringSelectMenuBuilder()
           .setCustomId("ia_options")
           .setPlaceholder("Select an option")
@@ -134,6 +149,7 @@ client.on(Events.InteractionCreate, async interaction => {
             new StringSelectMenuOptionBuilder().setLabel("New Chat").setValue("new"),
             new StringSelectMenuOptionBuilder().setLabel("Reset Chat").setValue("reset")
           );
+
         return interaction.reply({
           content:"💬 Noxen AI Options",
           components:[new ActionRowBuilder().addComponents(menu)],
@@ -141,10 +157,12 @@ client.on(Events.InteractionCreate, async interaction => {
         });
 
       case "ticket_panel":
+
         const button = new ButtonBuilder()
           .setCustomId("open_ticket")
           .setLabel("🎫 Open Ticket")
           .setStyle(ButtonStyle.Primary);
+
         return interaction.reply({
           content:"🎫 Noxen Studios Support Panel\nClick the button to open a ticket.",
           components:[new ActionRowBuilder().addComponents(button)]
@@ -154,28 +172,52 @@ client.on(Events.InteractionCreate, async interaction => {
         return interaction.reply("🌐 https://noxenstd.wixsite.com/noxen-studios");
 
       case "contact":
-        return interaction.reply({ content:"📧 noxenstds@gmail.com", ephemeral:true });
+        return interaction.reply({
+          content:"📧 noxenstds@gmail.com",
+          ephemeral:true
+        });
+
     }
+
   }
 
+  // ---------- Menu IA ----------
   if (interaction.isStringSelectMenu() && interaction.customId === "ia_options") {
+
     switch (interaction.values[0]) {
+
       case "new":
       case "reset":
         conversations.set(userId, []);
         lastReplies.delete(userId);
-        return interaction.update({ content:"🧹 Chat reset.", components:[] });
+        return interaction.update({
+          content:"🧹 Chat reset.",
+          components:[]
+        });
+
       case "continue":
-        return interaction.update({ content:"💬 Continue your chat by sending a DM.", components:[] });
+        return interaction.update({
+          content:"💬 Continue your chat by sending a DM.",
+          components:[]
+        });
+
     }
+
   }
 
+  // ---------- Tickets ----------
   if (interaction.isButton()) {
+
     if (interaction.customId === "open_ticket") {
+
       if (userTickets.has(userId))
-        return interaction.reply({ content:"You already have an open ticket.", ephemeral:true });
+        return interaction.reply({
+          content:"You already have an open ticket.",
+          ephemeral:true
+        });
 
       const safeName = interaction.user.username.replace(/[^a-zA-Z0-9]/g,"-").toLowerCase();
+
       const channel = await interaction.guild.channels.create({
         name:`ticket-${safeName}`,
         type:ChannelType.GuildText,
@@ -192,26 +234,49 @@ client.on(Events.InteractionCreate, async interaction => {
           new ButtonBuilder().setCustomId("close_ticket").setLabel("Close Ticket").setStyle(ButtonStyle.Danger)
         );
 
-      await channel.send({ content:`🎫 Ticket opened by ${interaction.user}`, components:[row] });
-      return interaction.reply({ content:`✅ Your ticket has been created: ${channel}`, ephemeral:true });
+      await channel.send({
+        content:`🎫 Ticket opened by ${interaction.user}`,
+        components:[row]
+      });
+
+      return interaction.reply({
+        content:`✅ Your ticket has been created: ${channel}`,
+        ephemeral:true
+      });
+
     }
 
-    if (interaction.customId === "close_ticket" && interaction.channel.type === ChannelType.GuildText) {
-      await interaction.channel.delete();
-      userTickets.forEach((ch,uid)=>{ if(ch.id===interaction.channel.id) userTickets.delete(uid); });
+    if (interaction.customId === "close_ticket") {
+
+      if (interaction.channel.type === ChannelType.GuildText) {
+
+        await interaction.channel.delete();
+
+        userTickets.forEach((ch,uid)=>{
+          if(ch.id===interaction.channel.id) userTickets.delete(uid);
+        });
+
+      }
+
     }
+
   }
+
 });
 
 // ---------- DMs IA ----------
 client.on(Events.MessageCreate, async message => {
+
   if (message.author.bot) return;
   if (message.guild) return;
+
   if (respondedMessages.has(message.id)) return;
   respondedMessages.add(message.id);
 
   const reply = await getAIResponse(message.author.id, message.content);
+
   if (reply) await message.channel.send(reply);
+
 });
 
 // ---------- Login ----------
