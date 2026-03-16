@@ -1,5 +1,3 @@
-// index.js - Noxen Studios Bot Ultra (Groq AI)
-
 const {
 Client, GatewayIntentBits, Partials, Events,
 ChannelType, PermissionsBitField,
