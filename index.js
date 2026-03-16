@@ -20,7 +20,6 @@ if (!DISCORD_TOKEN || !CLIENT_ID) {
   console.error("❌ DISCORD_TOKEN ou CLIENT_ID não definido!");
   process.exit(1);
 }
-
 console.log("🔹 Discord token e Client ID carregados!");
 
 // ---------- Client ----------
@@ -45,8 +44,8 @@ if (GROQ_API_KEY) {
 
 // ---------- Express ----------
 const app = express();
-app.get("/", (req,res) => res.send("🤖 Noxen Studios Bot Online"));
-app.listen(3000, () => console.log("Servidor web ativo na porta 3000"));
+app.get("/", (req,res)=>res.send("🤖 Noxen Studios Bot Online"));
+app.listen(3000, ()=>console.log("Servidor web ativo..."));
 
 // ---------- Storage ----------
 const conversations = new Map();
@@ -63,7 +62,6 @@ const commands = [
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(DISCORD_TOKEN);
-
 (async () => {
   try {
     console.log("🔹 Registrando comandos globais...");
@@ -97,8 +95,12 @@ async function getAIResponse(userId, message) {
           role: "system",
           content: `You are the official assistant of Noxen Studios.
 Noxen Studios develops Roblox games.
-Website: https://noxenstd.wixsite.com/noxen-studios
-Always respond politely and professionally in the user's language.`
+
+Website:
+https://noxenstd.wixsite.com/noxen-studios
+
+Always respond politely and professionally.
+Respond in the same language as the user.`
         },
         ...history
       ]
@@ -132,11 +134,21 @@ client.on(Events.InteractionCreate, async interaction => {
             new StringSelectMenuOptionBuilder().setLabel("New Chat").setValue("new"),
             new StringSelectMenuOptionBuilder().setLabel("Reset Chat").setValue("reset")
           );
-        return interaction.reply({ content:"💬 Noxen AI Options", components:[new ActionRowBuilder().addComponents(menu)], ephemeral:true });
+        return interaction.reply({
+          content:"💬 Noxen AI Options",
+          components:[new ActionRowBuilder().addComponents(menu)],
+          ephemeral:true
+        });
 
       case "ticket_panel":
-        const button = new ButtonBuilder().setCustomId("open_ticket").setLabel("🎫 Open Ticket").setStyle(ButtonStyle.Primary);
-        return interaction.reply({ content:"🎫 Noxen Studios Support Panel\nClick the button to open a ticket.", components:[new ActionRowBuilder().addComponents(button)] });
+        const button = new ButtonBuilder()
+          .setCustomId("open_ticket")
+          .setLabel("🎫 Open Ticket")
+          .setStyle(ButtonStyle.Primary);
+        return interaction.reply({
+          content:"🎫 Noxen Studios Support Panel\nClick the button to open a ticket.",
+          components:[new ActionRowBuilder().addComponents(button)]
+        });
 
       case "site":
         return interaction.reply("🌐 https://noxenstd.wixsite.com/noxen-studios");
@@ -146,7 +158,6 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 
-  // ---------- Menu IA ----------
   if (interaction.isStringSelectMenu() && interaction.customId === "ia_options") {
     switch (interaction.values[0]) {
       case "new":
@@ -159,40 +170,43 @@ client.on(Events.InteractionCreate, async interaction => {
     }
   }
 
-  // ---------- Tickets ----------
   if (interaction.isButton()) {
     if (interaction.customId === "open_ticket") {
-      if (userTickets.has(userId)) return interaction.reply({ content:"You already have an open ticket.", ephemeral:true });
+      if (userTickets.has(userId))
+        return interaction.reply({ content:"You already have an open ticket.", ephemeral:true });
 
       const safeName = interaction.user.username.replace(/[^a-zA-Z0-9]/g,"-").toLowerCase();
       const channel = await interaction.guild.channels.create({
         name:`ticket-${safeName}`,
         type:ChannelType.GuildText,
         permissionOverwrites:[
-          {id:interaction.guild.id, deny:[PermissionsBitField.Flags.ViewChannel]},
-          {id:interaction.user.id, allow:[PermissionsBitField.Flags.ViewChannel]}
+          {id:interaction.guild.id,deny:[PermissionsBitField.Flags.ViewChannel]},
+          {id:interaction.user.id,allow:[PermissionsBitField.Flags.ViewChannel]}
         ]
       });
 
-      userTickets.set(userId, channel);
+      userTickets.set(userId,channel);
 
-      const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId("close_ticket").setLabel("Close Ticket").setStyle(ButtonStyle.Danger));
+      const row = new ActionRowBuilder()
+        .addComponents(
+          new ButtonBuilder().setCustomId("close_ticket").setLabel("Close Ticket").setStyle(ButtonStyle.Danger)
+        );
+
       await channel.send({ content:`🎫 Ticket opened by ${interaction.user}`, components:[row] });
       return interaction.reply({ content:`✅ Your ticket has been created: ${channel}`, ephemeral:true });
     }
 
-    if (interaction.customId === "close_ticket") {
-      if (interaction.channel.type === ChannelType.GuildText) {
-        await interaction.channel.delete();
-        userTickets.forEach((ch, uid) => { if(ch.id===interaction.channel.id) userTickets.delete(uid); });
-      }
+    if (interaction.customId === "close_ticket" && interaction.channel.type === ChannelType.GuildText) {
+      await interaction.channel.delete();
+      userTickets.forEach((ch,uid)=>{ if(ch.id===interaction.channel.id) userTickets.delete(uid); });
     }
   }
 });
 
-// ---------- DMs ----------
+// ---------- DMs IA ----------
 client.on(Events.MessageCreate, async message => {
-  if (message.author.bot || message.guild) return;
+  if (message.author.bot) return;
+  if (message.guild) return;
   if (respondedMessages.has(message.id)) return;
   respondedMessages.add(message.id);
 
